@@ -51,6 +51,6 @@ function pbar(){
 }
 
 # remove all but the N (i.e 5) most recent files 
-rm `ls -t | awk 'NR>5'
+rm `ls -t | awk 'NR>5'`
 # or the last recent files
-rm `ls -tr | awk 'NR>5'
+rm `ls -tr | awk 'NR>5'`
