@@ -54,3 +54,8 @@ function pbar(){
 rm `ls -t | awk 'NR>5'`
 # or the last recent files
 rm `ls -tr | awk 'NR>5'`
+
+# monitor sensors
+watch -n 1 -d sensors
+
+
