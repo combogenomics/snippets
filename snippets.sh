@@ -58,4 +58,14 @@ rm `ls -tr | awk 'NR>5'`
 # monitor sensors
 watch -n 1 -d sensors
 
-
+# convert a figure in bw
+gs \
+ -sOutputFile=output.pdf \
+ -sDEVICE=pdfwrite \
+ -sColorConversionStrategy=Gray \
+ -dProcessColorModel=/DeviceGray \
+ -dCompatibilityLevel=1.4 \
+ -dNOPAUSE \
+ -dBATCH \
+ -dAutoRotatePages=/None \
+ input.pdf
