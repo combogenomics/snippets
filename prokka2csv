@@ -1,0 +1,437 @@
+#!/usr/bin/python
+
+import  sys
+import os
+from Bio import SeqIO
+from Bio.SeqUtils import GC
+
+def getOptions():
+    import argparse
+
+    # create the top-level parser
+    description = ("Take a prokka-generated genabank file and prepare the outputs for the Combo DB\nNOTE: this genbank file can also have been generated with any other annotator")
+    parser = argparse.ArgumentParser(description = description)
+    parser.add_argument('genbank', action='store',
+                        help='Prokka-generated genbank file')
+    parser.add_argument('strainID', action='store',
+                        help='Strain ID (usually the strain name) (MAX 45 chars)')
+    parser.add_argument('-P', '--public', action="store_true",
+            default=False,
+            dest='public',
+            help='Genome is public [Default: private genomes]')
+    parser.add_argument('-C', '--complete', action="store_true",
+            default=False,
+            dest='complete',
+            help='Genome is complete [Default: draft genomes]')
+
+    taxonomy = parser.add_argument_group('Taxonomy')    
+    # Taxonomy
+    taxonomy.add_argument('-T', '--infer-taxonomy', action="store_true",
+            default=False,
+            dest='taxonomy',
+            help='Infer taxonomy from NCBI [Default: provide with option flags]')
+    taxonomy.add_argument('-l', '--email', action='store',
+                        dest='email',
+                        default=None,
+                        help='email (needed when using NCBI taxonomy)')
+    # Provide your own taxonomy
+    taxonomy.add_argument('-p', '--phylum', action='store',
+                        dest='phylum',
+                        default=None,
+                        help='Organism phylum (leave blank for autoguess)')
+    taxonomy.add_argument('-c', '--class', action='store',
+                        dest='tclass',
+                        default=None,
+                        help='Organism class (leave blank for autoguess)')
+    taxonomy.add_argument('-o', '--order', action='store',
+                        dest='order',
+                        default=None,
+                        help='Organism order (leave blank for autoguess)')
+    taxonomy.add_argument('-f', '--family', action='store',
+                        dest='family',
+                        default=None,
+                        help='Organism family (leave blank for autoguess)')
+    taxonomy.add_argument('-g', '--genus', action='store',
+                        dest='genus',
+                        default=None,
+                        help='Organism genus (leave blank for autoguess)')
+    taxonomy.add_argument('-s', '--species', action='store',
+                        dest='species',
+                        default=None,
+                        help='Organism species (leave blank for autoguess)')
+    taxonomy.add_argument('-x', '--taxonomy-id', action='store',
+                        dest='taxonomyID',
+                        default=None,
+                        help='Organism NCBI taxonomy ID (MAX 11 chars) [Inferred if option -T is used]')
+    
+    # Other informations
+    parser.add_argument('-e', '--phenotype', action='store',
+                        dest='phenotype',
+                        default=None,
+                        help='Organism phenotype (MAX 100 chars)')
+    parser.add_argument('-m', '--morphology', action='store',
+                        dest='morphology',
+                        default=None,
+                        help='Organism morphology (MAX 100 chars)')
+    parser.add_argument('-i', '--isolation-place', action='store',
+                        dest='place',
+                        default=None,
+                        help='Organism isolation location (MAX 100 chars)')
+    parser.add_argument('-d', '--isolation-date', action='store',
+                        dest='date',
+                        default=None,
+                        help='Organism isolation date (MAX 100 chars)')
+    parser.add_argument('-t', '--sequencing-technology', action='store',
+                        dest='seqtech',
+                        default=None,
+                        help='Organism sequencing technology (MAX 100 chars)')
+    parser.add_argument('-r', '--research-group', action='store',
+                        dest='group',
+                        default=None,
+                        help='Research group (MAX 100 chars)')
+
+    return parser.parse_args()
+
+# Classes
+class Feature(object):
+    def __init__(self,f_id='dummy'):
+        self.feature_id=f_id
+        self.genome_id=''
+        self.dna_id=''
+        self.locus_tag=''
+        self.gene_name=''
+        self.start=''
+        self.stop=''
+        self.strand=''
+        self.type='Other'
+        self.descr=''
+        self.pro_seq=''
+    def getHeader(self):
+        out = "','".join( ['feature_id','genome_id','dna_id','locus_tag',
+                            'gene_name','start','stop','strand','type','descr'
+                            ,'pro_seq'] )
+        return "'"+out+"'"
+    def __str__(self): 
+        self.descr = self.descr.replace(',','')
+        return '\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',%s,%s,%s,\'%s\',\'%s\',\'%s\''%(self.feature_id,self.genome_id,self.dna_id,self.locus_tag,self.gene_name,self.start,self.stop,self.strand,self.type,self.descr,self.pro_seq)
+
+class Dna(object):
+    def __init__(self,d_id='dummy'):
+        self.dna_id=d_id
+        self.genome_id=''
+        self.long_name=''
+        self.length=''
+        self.dna_seq=''
+    def getHeader(self):
+        out = "','".join( ['dna_id','genome_id','long_name','length','dna_seq'] )
+        return "'"+out+"'"
+    def __str__(self): return '\'%s\',\'%s\',\'%s\',%s,\'%s\''%(self.dna_id,self.genome_id,self.long_name,self.length,self.dna_seq)
+
+class Genomes(object):
+    def __init__(self,g_id='dummy'):
+        self.genome_id=g_id
+        self.long_name=''
+        self.phenotype=''
+        self.morphology=''
+        self.place=''
+        self.year=''
+        self.seq_tech=''
+        self.length=''
+        self.gc=0
+        self.id_taxa=''
+        self.complete=0
+        self.group=''
+        self.private=0
+    def getHeader(self):
+        out = "','".join( ['genome_id','long_name','phenotype','morphology',
+                        'place_is','year_is','seq_tech','length','gc','id_taxo',
+                        'complete','group_is','private'] )
+        return "'"+out+"'"
+    def __str__(self): return '\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',%s,\'%s\',%s,\'%s\',\'%s\',\'%s\',\'%s\',\'%s\''%(self.genome_id,self.long_name,self.phenotype,self.morphology,self.place,self.year,self.seq_tech,self.length,self.gc,self.id_taxa,self.complete,self.group,self.private)
+    
+class Taxonomy(object):
+    def __init__(self,g_id='dummy'):
+        self.genome_id=g_id
+        self._phylum=''
+        self._class=''
+        self._order=''
+        self._family=''
+        self._genus=''
+        self._species=''
+    def getHeader(self):
+        out = "','".join( ['genome_id','phylum','class','order',
+                        'family','genus','species'] )
+        return "'"+out+"'"
+    def __str__(self): return '\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',\'%s\''%(self.genome_id,self._phylum,self._class,self._order,self._family,self._genus,self._species)
+
+def getTaxonomyFromEntrez(strainID, entrez):
+    # Ready!
+    tax = Taxonomy(g_id = strainID)
+    
+    taxs = ['phylum', 'class', 'order', 'family', 'genus', 'species']
+    for t in entrez['LineageEx']:
+        if t['Rank'] in taxs:
+            setattr(tax, '_'+t['Rank'], t['ScientificName'])
+    
+    return tax
+
+def getTaxonomyFromID(strainID, taxID, email):
+    from Bio import Entrez
+    Entrez.email = email
+    Entrez.tool = 'prokka2csv'
+    
+    # Straight to eFetch
+    h = Entrez.efetch(db='taxonomy', id=taxID)
+    r = Entrez.read(h)
+    
+    d = r[0]
+    
+    return getTaxonomyFromEntrez(strainID, d)
+
+def getTaxonomyFromSpecies(strainID, species, email):
+    from Bio import Entrez
+    Entrez.email = email
+    Entrez.tool = 'prokka2csv'
+    
+    taxID = None
+    
+    # First try to use the strainID
+    h = Entrez.esearch(db='taxonomy', term='%s %s[All names]'%(species,
+                                                            strainID))
+    r = Entrez.read(h)
+    if len(r['IdList']) == 0:
+        print('"%s %s" not found, trying only the species name (%s)'%(species,
+                                                                      strainID,
+                                                                      species))
+        h = Entrez.esearch(db='taxonomy', term='%s[All names]'%species)
+        r = Entrez.read(h)
+        if len(r['IdList']) == 0:
+            print('"%s" not found'%species)
+            raise Exception('Species name not found in NCBI taxonomy')
+        else:
+            taxID = r['IdList'][0]
+            h = Entrez.efetch(db='taxonomy', id=r['IdList'][0])
+            r = Entrez.read(h)
+    else:
+        taxID = r['IdList'][0]
+        h = Entrez.efetch(db='taxonomy', id=r['IdList'][0])
+        r = Entrez.read(h)
+    
+    d = r[0]
+    
+    return taxID, getTaxonomyFromEntrez(strainID, d)
+    
+def getTaxonomyFromOptions(options):
+    tax = Taxonomy(g_id = options.strainID)
+    
+    tax._phylum = options.phylum
+    tax._class = options.tclass
+    tax._order = options.order
+    tax._family = options.family
+    tax._genus = options.genus
+    tax._species = options.species
+    
+    return tax
+
+if __name__ == "__main__":
+    options = getOptions()
+
+    # First: resolve taxonomy
+    if options.taxonomyID is not None:
+        if options.email is None:
+            print('Email is needed to guess taxonomy data from NCBI!')
+            sys.exit(1)
+        # Use the NCBI taxonomyID 
+        # If it fails, fallback to options
+        print('NCBI taxonomyID provided')
+        
+        try:
+            tax = getTaxonomyFromID(options.strainID, options.taxonomyID,
+                                    options.email)
+        except Exception, e:
+            print('Could not guess taxonomy from NCBI taxonomic ID!')
+            print('Error was: %s'%e)
+            print('Using user-provided taxonomic informations')
+            if options.species is not None:
+                print('Guessing taxonomic information from species name')
+                try:
+                    options.taxonomyID, tax = getTaxonomyFromSpecies(
+                                                                options.strainID,
+                                                                options.species,
+                                                                options.email
+                                                                )
+                    print('Discovered organisms NCBI taxonomy ID (%s)'%
+                                                            options.taxonomyID)
+                except Exception, e:
+                    print('Could not guess taxonomy from species name!')
+                    print('Error was: %s'%e)
+                    print('Using user-provided taxonomic informations')
+                    tax = getTaxonomyFromOptions(options)
+
+    elif options.species is not None:
+        if options.email is None:
+            print('Email is needed to guess taxonomy data from NCBI!')
+            sys.exit(1)
+        
+        print('Guessing taxonomic information from species name')
+        try:
+            options.taxonomyID, tax = getTaxonomyFromSpecies(
+                                                        options.strainID,
+                                                        options.species,
+                                                        options.email
+                                                        )
+            print('Discovered organisms NCBI taxonomy ID (%s)'%
+                                                    options.taxonomyID)
+        except Exception, e:
+            print('Could not guess taxonomy from species name!')
+            print('Error was: %s'%e)
+            print('Using user-provided taxonomic informations')
+            tax = getTaxonomyFromOptions(options)
+        
+    else:
+        print('Guessing taxonomic information from genbank file')
+        # Retieve informations from the genbank
+        for s in SeqIO.parse(options.genbank, 'genbank'):
+            break
+        
+        try:
+            options.taxonomyID, tax = getTaxonomyFromSpecies(
+                                                        options.strainID,
+                                                        s.annotations['source'],
+                                                        options.email
+                                                        )
+            print('Discovered organisms NCBI taxonomy ID (%s)'%
+                                                    options.taxonomyID)
+        except Exception, e:
+            print('Could not guess taxonomy from genbank file!')
+            print('Error was: %s'%e)
+            print('Using user-provided taxonomic informations')
+            tax = getTaxonomyFromOptions(options)
+
+    # Second: compute general stats
+    # Third: cycle over features
+
+    dnas = set()
+    features = set()
+    stot = None
+
+    for s in SeqIO.parse(options.genbank, 'genbank'):
+        # Sanity check
+        org = filter(lambda x: x.type == 'source',
+                     s.features)[0].qualifiers['organism'][0]
+        strain = filter(lambda x: x.type == 'source',
+                     s.features)[0].qualifiers['strain'][0]
+        if tax._species and org != tax._species:
+            print('Sequence %s source (%s) does not match with provided taxonomy (%s)!'%
+                    (s.id, org, tax._species))
+        if options.strainID != strain:
+            print('Sequence %s strain (%s) does not match with provided strainID (%s)!'%
+                    (s.id, strain, options.strainID))
+        
+        if stot is None:
+            stot = s
+        else:
+            stot += s
+            
+        d = Dna(d_id=s.id)
+        d.genome_id = options.strainID
+        d.long_name = s.description
+        d.length = len(s)
+        d.dna_seq = str(s.seq)
+        
+        dnas.add(d)
+        
+        for f in filter(lambda x: x.type != 'gene' and x.type != 'source',
+                        s.features):
+            
+            e = Feature(f_id = f.qualifiers['locus_tag'][0])        
+            e.genome_id = options.strainID
+            e.dna_id = s.id
+            e.locus_tag = f.qualifiers['locus_tag'][0]
+            if 'gene' in f.qualifiers:
+                e.gene_name = f.qualifiers['gene'][0]
+            e.start = int(f.location.start)
+            e.stop = int(f.location.end)
+            if f.strand < 0:
+                e.strand = 0
+            else:
+                e.strand = 1 
+            e.type = f.type
+            
+            # Construct the description
+            e.descr = ''
+            if 'product' in f.qualifiers:
+                for n in f.qualifiers['product']:
+                    e.descr += n + ' '
+            if 'EC_number' in f.qualifiers:
+                for n in f.qualifiers['EC_number']:
+                    e.descr += n + ' '
+            if 'note' in f.qualifiers:
+                for n in f.qualifiers['note']:
+                    e.descr += n + ' '
+            if 'inference' in f.qualifiers:
+                for n in f.qualifiers['inference']:
+                    e.descr += '(%s)'%n + ' '
+            e.descr = e.descr.rstrip()
+            #
+            
+            if 'translation' in f.qualifiers:
+                e.pro_seq = f.qualifiers['translation'][0]
+                
+            features.add(e)
+            
+    # Last step: genomes table
+    g = Genomes(g_id = options.strainID)
+    if tax._species:
+        g.long_name = '%s %s'%(tax._species, options.strainID)
+    elif options.species:
+        g.long_name = '%s %s'%(options.species, options.strainID)
+    else:
+        g.long_name = '%s %s'%(s.annotations['source'], options.strainID)
+        
+    if options.phenotype:
+        g.phenotype = options.phenotype
+    if options.morphology:
+        g.morphology = options.morphology
+    if options.place:
+        g.place = options.place
+    if options.date:
+        g.year = options.date
+    if options.seqtech:
+        g.seq_tech = options.seqtech
+    if options.group:
+        g.group = options.group
+
+    g.length = len(stot)
+    g.gc = GC(stot.seq)
+    
+    if options.taxonomyID is not None:
+        g.id_taxa = options.taxonomyID
+        
+    g.complete = int(options.complete)
+    g.private = int(not options.public)
+    
+    # Write to file
+    o = open('genomes.csv', 'w')
+    o.write('%s\n%s\n'%(g.getHeader(), str(g)))
+    o.close()
+    
+    o = open('taxonomy.csv', 'w')
+    o.write('%s\n%s\n'%(tax.getHeader(), str(tax)))
+    o.close()
+            
+    o = open('dna.csv', 'w')
+    o.write('%s\n'%Dna().getHeader())
+    for d in dnas:
+        o.write('%s\n'%str(d))
+    o.close()
+    
+    o = open('features.csv', 'w')
+    o.write('%s\n'%Feature().getHeader())
+    for f in features:
+        o.write('%s\n'%str(f))
+    o.close()
+    
+    print('Saved files: genomes.csv taxonomy.csv dna.csv features.csv')
+    print('Saved to file %d DNA molecules, having %d features'%(len(dnas),
+                                                                len(features)))
