@@ -113,7 +113,7 @@ class Feature(object):
         return "'"+out+"'"
     def __str__(self): 
         self.descr = self.descr.replace(',','')
-        return '\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',%s,%s,%s,\'%s\',\'%s\',\'%s\''%(self.feature_id,self.genome_id,self.dna_id,self.locus_tag,self.gene_name,self.start,self.stop,self.strand,self.type,self.descr,self.pro_seq)
+        return '\'%s\',\'%s\',\'%s\',\'%s\',\'%s\',%s,%s,%s,\'%s\',\'%s\',\'%s\''%(self.feature_id,self.genome_id,self.dna_id,self.locus_tag,self.gene_name.replace("'", "\\'"),self.start,self.stop,self.strand,self.type,self.descr.replace("'", "\\'"),self.pro_seq)
 
 class Dna(object):
     def __init__(self,d_id='dummy'):
@@ -343,6 +343,10 @@ if __name__ == "__main__":
         
         for f in filter(lambda x: x.type != 'gene' and x.type != 'source',
                         s.features):
+            if 'locus_tag' not in f.qualifiers:
+                print('Skipping one feature (type: %s)'%f.type)
+                print('Feature details: %s'%str(f.qualifiers))
+                continue
             
             e = Feature(f_id = f.qualifiers['locus_tag'][0])        
             e.genome_id = options.strainID
