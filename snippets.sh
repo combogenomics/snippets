@@ -73,3 +73,7 @@ gs \
 # prepare list of species (Multiparanoid input) from Inparanoid tables
 all_species=`ls INPDIR/ | grep ^table | sed 's/table.//g' | awk -F "-" '{print $1}' | uniq`
 out=`echo $all_species | sed 's\ \+\g'`
+# same task, more "bashy"
+function join { local IFS="$1"; shift; echo "$*"; }
+join - $all_species
+
