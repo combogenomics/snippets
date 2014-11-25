@@ -77,3 +77,7 @@ out=`echo $all_species | sed 's\ \+\g'`
 function join { local IFS="$1"; shift; echo "$*"; }
 join - $all_species
 
+# compute GC
+function gc(){
+file=$1
+cat $file | grep -v '>' | awk -vFS="" '{for(i=1;i<=NF;i++)w[tolower($i)]++}END{gc=w["c"]+w["g"]; total=0; for(i in w) total+=w[i]; print gc/total}'}
