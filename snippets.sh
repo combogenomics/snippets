@@ -81,3 +81,15 @@ join - $all_species
 function gc(){
 file=$1
 cat $file | grep -v '>' | awk -vFS="" '{for(i=1;i<=NF;i++)w[tolower($i)]++}END{gc=w["c"]+w["g"]; total=0; for(i in w) total+=w[i]; print gc/total}'}
+
+# assuming a table of presence/absence with row and column headers, this will get the row names and the row sums
+function rowmargins(){
+awk '{s=0; for (i=2; i<=NF; i++) s=s+$i; print $1,s}' $1
+}
+
+# these will return rows with just one 1, with all 1s and with a mix of these
+rowmargins $file | grep -w 1$ # get entries with just a 1
+rowmargins $file | grep -wcv 0$ # get entries with just a 1
+max=`awk '{print NF - 1}' not_pigmented_presAbs.tsv | tail -1`
+rowmargins $file | grep -w $max$ # get entries with all 1s
+rowmargins $file |  awk -v max=$max '$NF <= max && $NF > 1' # get 
