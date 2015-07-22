@@ -90,6 +90,6 @@ awk '{s=0; for (i=2; i<=NF; i++) s=s+$i; print $1,s}' $1
 # these will return rows with just one 1, with all 1s and with a mix of these
 rowmargins $file | grep -w 1$ # get entries with just a 1
 rowmargins $file | grep -wcv 0$ # get entries with just a 1
-max=`awk '{print NF - 1}' not_pigmented_presAbs.tsv | tail -1`
+max=`awk '{print NF - 1}' $file | tail -1`
 rowmargins $file | grep -w $max$ # get entries with all 1s
 rowmargins $file |  awk -v max=$max '$NF <= max && $NF > 1' # get 
