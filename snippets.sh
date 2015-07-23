@@ -93,3 +93,7 @@ rowmargins $file | grep -wcv 0$ # get total number of entries with at least a 1 
 max=`awk '{print NF - 1}' $file | tail -1`
 rowmargins $file | grep -w $max$ # get entries with all 1s (3)
 rowmargins $file |  awk -v max=$max '$NF < max && $NF > 1' # get the complement of (1) and (3)
+
+# replicate a string 10 times
+asd=
+echo $string$asd{1..10}
